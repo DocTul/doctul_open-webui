@@ -6,6 +6,7 @@ import hmac
 import hashlib
 import requests
 import os
+import time
 
 
 from datetime import datetime, timedelta
@@ -297,6 +298,92 @@ def get_verified_user(user=Depends(get_current_user)):
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
     return user
+
+
+def get_verified_user_or_anonymous(request: Request):
+    """
+    Permite usuários autenticados ou anônimos quando WEBUI_AUTH=false
+    """
+    from open_webui.config import WEBUI_AUTH
+    from open_webui.models.users import UserModel
+    import hashlib
+    
+    if WEBUI_AUTH:
+        # Modo autenticado - requer token válido
+        try:
+            # Tentar obter usuário autenticado
+            auth_token = request.headers.get("authorization")
+            if auth_token and auth_token.startswith("Bearer "):
+                token = auth_token.split(" ")[1]
+            else:
+                token = request.cookies.get("token")
+            
+            if token:
+                data = decode_token(token)
+                if data and "id" in data:
+                    user = Users.get_user_by_id(data["id"])
+                    if user:
+                        return user
+            
+            # Se não conseguir autenticar, falhar
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+            )
+    else:
+        # Modo anônimo - permitir acesso sem autenticação
+        try:
+            # Tentar obter usuário autenticado primeiro
+            auth_token = request.headers.get("authorization")
+            if auth_token and auth_token.startswith("Bearer "):
+                token = auth_token.split(" ")[1]
+            else:
+                token = request.cookies.get("token")
+            
+            if token:
+                try:
+                    data = decode_token(token)
+                    if data and "id" in data:
+                        user = Users.get_user_by_id(data["id"])
+                        if user:
+                            return user
+                except Exception:
+                    pass
+            
+            # Se não tem token ou token inválido, criar usuário anônimo
+            client_ip = getattr(request.client, 'host', 'unknown')
+            user_agent = request.headers.get("user-agent", "")
+            anonymous_id = hashlib.sha256(f"{client_ip}:{user_agent}".encode()).hexdigest()[:16]
+            
+            current_timestamp = int(time.time())
+            return UserModel(
+                id=f"anonymous_{anonymous_id}",
+                name="Anonymous User",
+                email="anonymous@example.com",
+                role="user",
+                profile_image_url="/user.png",
+                last_active_at=current_timestamp,
+                updated_at=current_timestamp,
+                created_at=current_timestamp
+            )
+        except Exception as e:
+            # Em caso de erro, criar usuário anônimo básico
+            current_timestamp = int(time.time())
+            return UserModel(
+                id="anonymous_fallback",
+                name="Anonymous User", 
+                email="anonymous@example.com",
+                role="user",
+                profile_image_url="/user.png",
+                last_active_at=current_timestamp,
+                updated_at=current_timestamp,
+                created_at=current_timestamp
+            )
 
 
 def get_admin_user(user=Depends(get_current_user)):

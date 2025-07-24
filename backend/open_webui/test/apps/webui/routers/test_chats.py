@@ -4,6 +4,8 @@ from test.util.abstract_integration_test import AbstractPostgresTest
 from test.util.mock_user import mock_webui_user
 
 
+import pytest
+pytestmark = pytest.mark.integration
 class TestChats(AbstractPostgresTest):
     BASE_PATH = "/api/v1/chats"
 

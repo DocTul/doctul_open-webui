@@ -1,0 +1,74 @@
+services:
+  openwebui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openwebui
+    restart: unless-stopped
+    volumes:
+      - openwebui-data:/app/backend/data
+    ports:
+      - "3000:8080"
+    environment:
+      # MÚLTIPLAS FORMAS DE FORÇAR WEBUI_AUTH=true
+      - WEBUI_AUTH=true
+      - WEBUI_AUTH_REQUIRED=true
+      - ENABLE_SIGNUP=true
+      - ENABLE_LOGIN_FORM=true
+      - ENABLE_LOGIN=true
+      - DEFAULT_USER_ROLE=user
+      - WEBUI_SECRET_KEY=force-auth-secret-key-12345
+      
+      # Keycloak OAuth
+      - ENABLE_OAUTH_SIGNUP=true
+      - OAUTH_CLIENT_ID=open-webui
+      - OAUTH_CLIENT_SECRET=aPFWLGOeT2u5PuWq1T0u1K2p9FmB4bVp
+      - OPENID_PROVIDER_URL=http://keycloak:8080/realms/openwebui/.well-known/openid-configuration
+      - OAUTH_PROVIDER_NAME=Keycloak Login
+      - OPENID_REDIRECT_URI=http://localhost:3000/oauth/oidc/callback
+      - ENABLE_OAUTH_GROUP_MANAGEMENT=true
+      - ENABLE_OAUTH_GROUP_CREATION=true
+      - OAUTH_GROUPS_CLAIM=groups
+      
+      # APIs externas
+      - ENABLE_OLLAMA_API=false
+      - ENABLE_OPENAI_API=true
+      - OPENAI_API_BASE_URL=http://host.docker.internal:8001/v1
+      - OPENAI_API_BASE_URLS=http://host.docker.internal:8001/v1
+      - OPENAI_API_KEY=none
+      - OPENAI_API_KEYS=none
+      
+      # RAG/Embedding
+      - RAG_EMBEDDING_ENGINE=openai
+      - RAG_EMBEDDING_MODEL=intfloat/multilingual-e5-base
+      - RAG_OPENAI_API_BASE_URL=http://host.docker.internal:8002/v1
+      - RAG_OPENAI_API_KEY=none
+      - RAG_EMBEDDING_BATCH_SIZE=32
+      
+      # Configurações básicas
+      - PORT=8080
+      - DATA_DIR=/app/backend/data
+      - DOCKER=true
+      - GLOBAL_LOG_LEVEL=INFO
+      - RAG_LOG_LEVEL=DEBUG
+      - OPENAI_LOG_LEVEL=DEBUG
+      - MODELS_LOG_LEVEL=INFO
+      
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - openwebui-network
+
+volumes:
+  openwebui-data:
+    name: openwebui-data
+
+networks:
+  openwebui-network:
+    driver: bridge
+    name: openwebui-network

@@ -33,7 +33,7 @@ from open_webui.env import (
     SRC_LOG_LEVELS,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import RedirectResponse, Response, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from open_webui.config import OPENID_PROVIDER_URL, ENABLE_OAUTH_SIGNUP, ENABLE_LDAP
 from pydantic import BaseModel
 
@@ -48,6 +48,8 @@ from open_webui.utils.auth import (
     get_password_hash,
     get_http_authorization_cred,
 )
+from fastapi import Response, BackgroundTasks
+from fastapi.security import HTTPAuthorizationCredentials
 from open_webui.utils.webhook import post_webhook
 from open_webui.utils.access_control import get_permissions
 
@@ -57,6 +59,8 @@ from ssl import CERT_NONE, CERT_REQUIRED, PROTOCOL_TLS
 
 from ldap3 import Server, Connection, NONE, Tls
 from ldap3.utils.conv import escape_filter_chars
+
+from open_webui.utils.auth import bearer_security
 
 router = APIRouter()
 
@@ -73,55 +77,93 @@ class SessionUserResponse(Token, UserResponse):
     permissions: Optional[dict] = None
 
 
+# AnonymousUser for unauthenticated sessions
+class AnonymousUser:
+    """Represents an anonymous user with limited chat access."""
+    def __init__(self, ip: str):
+        self.id = f"anonymous_{ip}"  # Formato esperado pela quota
+        self.role = "anonymous"
+        self.email = ""  # String vazia em vez de None
+        self.name = "Anonymous"
+        self.profile_image_url = ""  # String vazia em vez de None
+        self.permissions = {}
+
+
+# Optional user dependency: returns None on auth failure
+async def get_optional_user(
+    request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    auth_token: HTTPAuthorizationCredentials = Depends(bearer_security),
+) -> Optional:
+    try:
+        return get_current_user(request, response, background_tasks, auth_token)
+    except HTTPException:
+        return None
+
+
 @router.get("/", response_model=SessionUserResponse)
 async def get_session_user(
-    request: Request, response: Response, user=Depends(get_current_user)
+    request: Request,
+    response: Response,
+    user: Optional = Depends(get_optional_user),
 ):
-
-    auth_header = request.headers.get("Authorization")
-    auth_token = get_http_authorization_cred(auth_header)
-    token = auth_token.credentials
-    data = decode_token(token)
-
-    expires_at = None
-
-    if data:
-        expires_at = data.get("exp")
-
-        if (expires_at is not None) and int(time.time()) > expires_at:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=ERROR_MESSAGES.INVALID_TOKEN,
-            )
-
-        # Set the cookie token
-        response.set_cookie(
-            key="token",
-            value=token,
-            expires=(
-                datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
-                if expires_at
-                else None
-            ),
-            httponly=True,  # Ensures the cookie is not accessible via JavaScript
-            samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
-            secure=WEBUI_AUTH_COOKIE_SECURE,
-        )
-
-    user_permissions = get_permissions(
-        user.id, request.app.state.config.USER_PERMISSIONS
-    )
-
+    """Returns session info for authenticated or anonymous user."""
+    if user:
+        permissions = get_permissions(user.id, request.app.state.config.USER_PERMISSIONS)
+        return {
+            "token": None,
+            "token_type": None,
+            "expires_at": None,
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "profile_image_url": user.profile_image_url,
+            "permissions": permissions,
+        }
+    # anonymous fallback
+    client_ip = request.client.host if request.client else "unknown"
+    anon = AnonymousUser(ip=client_ip)
     return {
-        "token": token,
-        "token_type": "Bearer",
-        "expires_at": expires_at,
-        "id": user.id,
-        "email": user.email,
-        "name": user.name,
-        "role": user.role,
-        "profile_image_url": user.profile_image_url,
-        "permissions": user_permissions,
+        "token": "",  # String vazia em vez de None
+        "token_type": "",  # String vazia em vez de None
+        "expires_at": None,
+        "id": anon.id,
+        "email": anon.email,
+        "name": anon.name,
+        "role": anon.role,
+        "profile_image_url": anon.profile_image_url,
+        "permissions": anon.permissions,
+    }
+
+
+@router.get("/context")
+async def get_user_context(
+    request: Request,
+    user: Optional = Depends(get_optional_user),
+):
+    """Returns user context for admin/user mode detection."""
+    # Verificar se é admin
+    is_admin = False
+    if user and hasattr(user, 'role') and user.role == "admin":
+        is_admin = True
+    
+    # Verificar parâmetros de URL para contexto admin
+    url_path = str(request.url.path)
+    url_query = str(request.url.query) if request.url.query else ""
+    admin_context = "/admin" in url_path or "admin=true" in url_query
+    
+    # Determinar se quota deve ser aplicada
+    from open_webui.utils.quota import should_enforce_quota
+    enforce_quota = should_enforce_quota(request, user)
+    
+    return {
+        "user_id": user.id if user else None,
+        "is_admin": is_admin,
+        "admin_context": admin_context,
+        "enforce_quota": enforce_quota,
+        "user_type": "admin" if is_admin else ("authenticated" if user else "anonymous")
     }
 
 
@@ -581,9 +623,13 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
         raise HTTPException(400, detail=ERROR_MESSAGES.EMAIL_TAKEN)
 
     try:
-        role = (
-            "admin" if user_count == 0 else request.app.state.config.DEFAULT_USER_ROLE
-        )
+        # Estratégia híbrida: primeiro usuário sempre admin, demais baseados na configuração
+        if user_count == 0:
+            # Primeiro usuário sempre admin para setup inicial
+            role = "admin"
+        else:
+            # Usuários subsequentes seguem a configuração, mas admin se solicitado
+            role = request.app.state.config.DEFAULT_USER_ROLE
 
         # The password passed to bcrypt must be 72 bytes or fewer. If it is longer, it will be truncated before hashing.
         if len(form_data.password.encode("utf-8")) > 72:
@@ -1010,6 +1056,58 @@ async def update_ldap_config(
 ):
     request.app.state.config.ENABLE_LDAP = form_data.enable_ldap
     return {"ENABLE_LDAP": request.app.state.config.ENABLE_LDAP}
+
+
+############################
+# API Key
+############################
+
+############################
+# Admin Setup Endpoint
+############################
+
+@router.post("/setup/admin")
+async def setup_admin(request: Request):
+    """Endpoint especial para criar usuário admin inicial"""
+    from open_webui.models.users import Users
+    
+    try:
+        # Buscar por usuário admin de forma mais simples
+        admin_email = "admin@localhost"
+        admin_password = "admin123"
+        
+        # Verificar se usuário admin já existe
+        existing_admin = Users.get_user_by_email(admin_email)
+        if existing_admin and existing_admin.role == "admin":
+            return {"message": "Admin user already exists", "email": admin_email}
+        
+        if existing_admin:
+            # Se usuário existe mas não é admin, promover
+            Users.update_user_by_id(existing_admin.id, {"role": "admin"})
+            return {"message": "Existing user promoted to admin", "email": admin_email}
+        else:
+            # Criar novo usuário admin
+            hashed = get_password_hash(admin_password)
+            user = Auths.insert_new_auth(
+                email=admin_email,
+                password=hashed,
+                name="Administrator",
+                role="admin",
+            )
+            
+            if user:
+                return {
+                    "message": "Admin user created successfully",
+                    "email": admin_email,
+                    "password": admin_password,
+                    "note": "Please change password after first login"
+                }
+            else:
+                raise HTTPException(500, detail="Failed to create admin user")
+                
+    except Exception as e:
+        log.error(f"Setup admin error: {str(e)}")
+        raise HTTPException(500, detail=f"Error setting up admin: {str(e)}")
 
 
 ############################

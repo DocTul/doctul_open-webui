@@ -10,9 +10,9 @@ from aiocache import cached
 import requests
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, HTTPException, Request, APIRouter
+from fastapi import Depends, FastAPI, HTTPException, Request, APIRouter, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
@@ -27,6 +27,7 @@ from open_webui.env import (
     AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST,
     ENABLE_FORWARD_USER_INFO_HEADERS,
     BYPASS_MODEL_ACCESS_CONTROL,
+    WEBUI_AUTH,
 )
 from open_webui.models.users import UserModel
 
@@ -42,9 +43,9 @@ from open_webui.utils.misc import (
     convert_logit_bias_input_to_json,
 )
 
-from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui.utils.auth import get_admin_user, get_verified_user, get_verified_user_or_anonymous, get_current_user
 from open_webui.utils.access_control import has_access
-
+from open_webui.utils.quota import enforce_chat_quota
 
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["OPENAI"])
@@ -702,13 +703,38 @@ def convert_to_azure_payload(url, payload: dict, api_version: str):
     return url, payload
 
 
+
 @router.post("/chat/completions")
 async def generate_chat_completion(
     request: Request,
     form_data: dict,
-    user=Depends(get_verified_user),
     bypass_filter: Optional[bool] = False,
 ):
+    # *** CONTROLE DE COTAS - INÍCIO ***
+    # Obter usuário baseado no modo de autenticação
+    if not WEBUI_AUTH:
+        # Modo anônimo permitido - usar função especial para permitir anônimos
+        actual_user = get_verified_user_or_anonymous(request)
+    else:
+        # Modo autenticado - obter usuário atual via dependência interna
+        try:
+            current_user = await get_current_user(request)
+            if current_user.role not in {"user", "admin"}:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+                )
+            actual_user = current_user
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+            )
+    
+    # Aplicar controle de quota
+    quota_result = enforce_chat_quota(request, actual_user)
+    # *** CONTROLE DE COTAS - FIM ***
+
     if BYPASS_MODEL_ACCESS_CONTROL:
         bypass_filter = True
 
@@ -732,14 +758,14 @@ async def generate_chat_completion(
             system = params.pop("system", None)
 
             payload = apply_model_params_to_body_openai(params, payload)
-            payload = apply_model_system_prompt_to_body(system, payload, metadata, user)
+            payload = apply_model_system_prompt_to_body(system, payload, metadata, actual_user)
 
         # Check if user has access to the model
-        if not bypass_filter and user.role == "user":
+        if not bypass_filter and actual_user.role == "user":
             if not (
-                user.id == model_info.user_id
+                actual_user.id == model_info.user_id
                 or has_access(
-                    user.id, type="read", access_control=model_info.access_control
+                    actual_user.id, type="read", access_control=model_info.access_control
                 )
             ):
                 raise HTTPException(
@@ -747,13 +773,13 @@ async def generate_chat_completion(
                     detail="Model not found",
                 )
     elif not bypass_filter:
-        if user.role != "admin":
+        if actual_user.role != "admin":
             raise HTTPException(
                 status_code=403,
                 detail="Model not found",
             )
 
-    await get_all_models(request, user=user)
+    await get_all_models(request, user=actual_user)
     model = request.app.state.OPENAI_MODELS.get(model_id)
     if model:
         idx = model["urlIdx"]
@@ -778,10 +804,10 @@ async def generate_chat_completion(
     # Add user info to the payload if the model is a pipeline
     if "pipeline" in model and model.get("pipeline"):
         payload["user"] = {
-            "name": user.name,
-            "id": user.id,
-            "email": user.email,
-            "role": user.role,
+            "name": actual_user.name,
+            "id": actual_user.id,
+            "email": actual_user.email,
+            "role": actual_user.role,
         }
 
     url = request.app.state.config.OPENAI_API_BASE_URLS[idx]
@@ -818,10 +844,10 @@ async def generate_chat_completion(
         ),
         **(
             {
-                "X-OpenWebUI-User-Name": quote(user.name, safe=" "),
-                "X-OpenWebUI-User-Id": user.id,
-                "X-OpenWebUI-User-Email": user.email,
-                "X-OpenWebUI-User-Role": user.role,
+                "X-OpenWebUI-User-Name": quote(actual_user.name, safe=" "),
+                "X-OpenWebUI-User-Id": actual_user.id,
+                "X-OpenWebUI-User-Email": actual_user.email,
+                "X-OpenWebUI-User-Role": actual_user.role,
                 **(
                     {"X-OpenWebUI-Chat-Id": metadata.get("chat_id")}
                     if metadata and metadata.get("chat_id")

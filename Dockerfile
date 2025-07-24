@@ -177,3 +177,6 @@ ENV WEBUI_BUILD_VERSION=${BUILD_HASH}
 ENV DOCKER=true
 
 CMD [ "bash", "start.sh"]
+
+RUN pip install --no-cache-dir \
+    pytest pytest-asyncio "moto[s3]" gcp-storage-emulator

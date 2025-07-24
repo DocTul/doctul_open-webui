@@ -266,6 +266,48 @@ class AppConfig:
 
 
 ####################################
+# Chat quotas and limits
+####################################
+ANONYMOUS_CHAT_LIMIT = PersistentConfig(
+    'ANONYMOUS_CHAT_LIMIT',
+    'quotas.anonymous_limit',
+    int(os.environ.get('ANONYMOUS_CHAT_LIMIT', '10'))
+)
+FREE_CHAT_QUOTA_AFTER_LOGIN = PersistentConfig(
+    'FREE_CHAT_QUOTA_AFTER_LOGIN',
+    'quotas.free_after_login',
+    int(os.environ.get('FREE_CHAT_QUOTA_AFTER_LOGIN', '30'))
+)
+
+####################################
+# Stripe configuration
+####################################
+STRIPE_CHECKOUT_URL = PersistentConfig(
+    'STRIPE_CHECKOUT_URL',
+    'stripe.checkout_url',
+    os.environ.get('STRIPE_CHECKOUT_URL', '')
+)
+STRIPE_WEBHOOK_SECRET = PersistentConfig(
+    'STRIPE_WEBHOOK_SECRET',
+    'stripe.webhook_secret',
+    os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+)
+
+####################################
+# OAuth admin roles and groups claim
+####################################
+OAUTH_ADMIN_ROLES = PersistentConfig(
+    'OAUTH_ADMIN_ROLES',
+    'oauth.admin_roles',
+    json.loads(os.environ.get('OAUTH_ADMIN_ROLES', '["admin"]'))
+)
+OAUTH_GROUPS_CLAIM = PersistentConfig(
+    'OAUTH_GROUPS_CLAIM',
+    'oauth.groups_claim',
+    os.environ.get('OAUTH_GROUPS_CLAIM', 'groups')
+)
+
+####################################
 # WEBUI_AUTH (Required for security)
 ####################################
 
@@ -1074,7 +1116,7 @@ MODEL_ORDER_LIST = PersistentConfig(
 DEFAULT_USER_ROLE = PersistentConfig(
     "DEFAULT_USER_ROLE",
     "ui.default_user_role",
-    os.getenv("DEFAULT_USER_ROLE", "pending"),
+    os.getenv("DEFAULT_USER_ROLE", "admin"),
 )
 
 PENDING_USER_OVERLAY_TITLE = PersistentConfig(

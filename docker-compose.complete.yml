@@ -1,0 +1,125 @@
+services:
+  # OpenWebUI completo (backend + frontend integrados)
+  openwebui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openwebui-complete
+    restart: unless-stopped
+    volumes:
+      - openwebui-data:/app/backend/data
+    ports:
+      - "3000:8080"  # Porta padrão do OpenWebUI
+    environment:
+      # ========================================
+      # CONFIGURAÇÕES DE API EXTERNA
+      # ========================================
+      
+      # Desabilitar Ollama e habilitar OpenAI API
+      - ENABLE_OLLAMA_API=false
+      - ENABLE_OPENAI_API=true
+      
+      # Configuração da API principal (modelo na porta 8001)
+      - OPENAI_API_BASE_URL=http://host.docker.internal:8001/v1
+      - OPENAI_API_BASE_URLS=http://host.docker.internal:8001/v1
+      - OPENAI_API_KEY=none
+      - OPENAI_API_KEYS=none
+      
+      # ========================================
+      # CONFIGURAÇÕES RAG/EMBEDDING
+      # ========================================
+      
+      # Configuração RAG/Embedding (modelo na porta 8002)
+      - RAG_EMBEDDING_ENGINE=openai
+      - RAG_EMBEDDING_MODEL=intfloat/multilingual-e5-base
+      - RAG_OPENAI_API_BASE_URL=http://host.docker.internal:8002/v1
+      - RAG_OPENAI_API_KEY=none
+      - RAG_EMBEDDING_BATCH_SIZE=32
+      
+      # ========================================
+      # CONFIGURAÇÕES BÁSICAS
+      # ========================================
+      
+      - WEBUI_SECRET_KEY=your-secret-key-change-this-in-production
+      - PORT=8080
+      - DATA_DIR=/app/backend/data
+      - DOCKER=true
+      
+      # ========================================
+      # AUTENTICAÇÃO E USUÁRIOS
+      # ========================================
+      
+      - WEBUI_AUTH=true
+      - ENABLE_SIGNUP=true
+      - ENABLE_LOGIN_FORM=true
+      - ENABLE_API_KEY=true
+      - DEFAULT_USER_ROLE=pending
+      - JWT_EXPIRES_IN=-1
+      
+      # ========================================
+      # FUNCIONALIDADES BÁSICAS
+      # ========================================
+      
+      - ENABLE_CHANNELS=true
+      - ENABLE_NOTES=true
+      - ENABLE_COMMUNITY_SHARING=true
+      - ENABLE_MESSAGE_RATING=true
+      - ENABLE_USER_WEBHOOKS=false
+      
+      # ========================================
+      # CONFIGURAÇÕES RAG ADICIONAIS
+      # ========================================
+      
+      - RAG_TOP_K=5
+      - CHUNK_SIZE=1000
+      - CHUNK_OVERLAP=100
+      - PDF_EXTRACT_IMAGES=false
+      - ENABLE_RAG_WEB_SEARCH=false
+      - ENABLE_RAG_LOCAL_WEB_FETCH=true
+      - ENABLE_RAG_HYBRID_SEARCH=true
+      
+      # ========================================
+      # LOGS E DEBUG
+      # ========================================
+      
+      - GLOBAL_LOG_LEVEL=INFO
+      - RAG_LOG_LEVEL=DEBUG
+      - OPENAI_LOG_LEVEL=DEBUG
+      - MODELS_LOG_LEVEL=INFO
+      
+      # ========================================
+      # CONFIGURAÇÕES DE SEGURANÇA
+      # ========================================
+      
+      - WEBUI_SESSION_COOKIE_SECURE=false
+      - WEBUI_SESSION_COOKIE_SAME_SITE=lax
+      - ENABLE_COMPRESSION_MIDDLEWARE=true
+      
+      # ========================================
+      # OUTRAS CONFIGURAÇÕES IMPORTANTES
+      # ========================================
+      
+      - ENABLE_WEBSOCKET_SUPPORT=true
+      - ENABLE_VERSION_UPDATE_CHECK=true
+      - BYPASS_MODEL_ACCESS_CONTROL=false
+      - SAFE_MODE=false
+      - ENV=prod
+      
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - openwebui-network
+
+volumes:
+  openwebui-data:
+    name: openwebui-data
+
+networks:
+  openwebui-network:
+    driver: bridge
+    name: openwebui-network

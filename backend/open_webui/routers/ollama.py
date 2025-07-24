@@ -49,9 +49,9 @@ from open_webui.utils.payload import (
     apply_model_params_to_body_openai,
     apply_model_system_prompt_to_body,
 )
-from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui.utils.auth import get_admin_user, get_verified_user, get_verified_user_or_anonymous
 from open_webui.utils.access_control import has_access
-
+from open_webui.utils.quota import enforce_chat_quota
 
 from open_webui.config import (
     UPLOAD_DIR,
@@ -1295,9 +1295,12 @@ async def generate_chat_completion(
     request: Request,
     form_data: dict,
     url_idx: Optional[int] = None,
-    user=Depends(get_verified_user),
+    user=Depends(get_verified_user_or_anonymous),
     bypass_filter: Optional[bool] = False,
 ):
+    # Enforce quota for all users (anonymous and authenticated)
+    enforce_chat_quota(request, user)
+    
     if BYPASS_MODEL_ACCESS_CONTROL:
         bypass_filter = True
 
@@ -1487,8 +1490,11 @@ async def generate_openai_chat_completion(
     request: Request,
     form_data: dict,
     url_idx: Optional[int] = None,
-    user=Depends(get_verified_user),
+    user=Depends(get_verified_user_or_anonymous),
 ):
+    # Enforce quota for all users (anonymous and authenticated)
+    enforce_chat_quota(request, user)
+    
     metadata = form_data.pop("metadata", None)
 
     try:

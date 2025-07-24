@@ -1,0 +1,75 @@
+/* Custom CSS para adicionar botão de admin na interface OpenWebUI */
+
+/* Botão flutuante para acesso admin */
+.admin-access-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+    z-index: 9999;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.admin-access-button:hover {
+    background: #b91c1c;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
+}
+
+.admin-access-button::before {
+    content: "⚙️";
+    font-size: 16px;
+}
+
+/* Estilo para modo escuro */
+.dark .admin-access-button {
+    background: #7c2d12;
+    color: #fed7aa;
+}
+
+.dark .admin-access-button:hover {
+    background: #9a3412;
+}
+
+/* Tooltip para o botão */
+.admin-access-button::after {
+    content: "Acesso Admin";
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.admin-access-button:hover::after {
+    opacity: 1;
+}
+
+/* Responsivo - esconder em telas muito pequenas */
+@media (max-width: 640px) {
+    .admin-access-button {
+        bottom: 80px;
+        right: 16px;
+        padding: 10px 16px;
+        font-size: 12px;
+    }
+}

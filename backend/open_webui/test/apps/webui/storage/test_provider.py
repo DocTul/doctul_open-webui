@@ -9,6 +9,8 @@ from gcp_storage_emulator.server import create_server
 from google.cloud import storage
 from azure.storage.blob import BlobServiceClient, ContainerClient, BlobClient
 from unittest.mock import MagicMock
+pytestmark = pytest.mark.integration
+import pytest
 
 
 def mock_upload_dir(monkeypatch, tmp_path):

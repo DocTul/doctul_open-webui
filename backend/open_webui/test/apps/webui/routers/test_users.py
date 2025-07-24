@@ -1,4 +1,6 @@
+import pytest
 from test.util.abstract_integration_test import AbstractPostgresTest
+pytestmark = pytest.mark.integration
 from test.util.mock_user import mock_webui_user
 
 

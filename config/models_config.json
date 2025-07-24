@@ -1,0 +1,106 @@
+{
+  "models": [
+    {
+      "id": "doctul",
+      "base_model_id": "/home/ai/II-Medical-8B",
+      "name": "DocTul",
+      "params": {
+        "system": "You are DocTul, a clinical assistant for Brazilian doctors (ER, ward, primary care). Always reply in Brazilian Portuguese.\nBe practical and medically accurate. When appropriate, be didactic and clear.\nAssume Brazilian context: limited resources, CT is more available than MRI.\nFollow internal context strictly if provided. Never override or ignore it.\nNever guess drug compositions. If a brand name is mentioned, ask for the active ingredient.\nAvoid speculation and self-references. Use step-by-step reasoning only when useful. Highlight final recommendations.",
+        "top_p": 0.9,
+        "temperature": 0.6
+      },
+      "meta": {
+        "profile_image_url": "/static/favicon.png",
+        "description": "Assistente clínico especializado para médicos brasileiros",
+        "capabilities": {
+          "vision": false,
+          "file_upload": false,
+          "web_search": false,
+          "image_generation": false,
+          "code_interpreter": false,
+          "citations": false,
+          "usage": false
+        },
+        "suggestion_prompts": [
+          "Como proceder com paciente com dor torácica?",
+          "Protocolo para hipertensão arterial",
+          "Diagnóstico diferencial de febre em adultos",
+          "Manejo de diabetes tipo 2 na atenção primária"
+        ],
+        "tags": ["medicina", "clinica", "brasil"]
+      },
+      "access": "authenticated"
+    },
+    {
+      "id": "geral",
+      "base_model_id": "/home/ai/II-Medical-8B",
+      "name": "Assistente Geral",
+      "params": {
+        "system": "Você é um assistente útil e respeitoso. Responda sempre em português brasileiro de forma clara e educativa. Mantenha respostas concisas e relevantes.",
+        "top_p": 0.95,
+        "temperature": 0.7
+      },
+      "meta": {
+        "profile_image_url": "/static/favicon.png",
+        "description": "Modelo geral para uso público com quota limitada",
+        "capabilities": {
+          "vision": false,
+          "file_upload": false,
+          "web_search": false,
+          "image_generation": false,
+          "code_interpreter": false,
+          "citations": false,
+          "usage": true
+        },
+        "suggestion_prompts": [
+          "Explique um conceito científico",
+          "Ajude com uma dúvida geral",
+          "Escreva um texto informativo",
+          "Faça um resumo"
+        ],
+        "tags": ["geral", "publico", "quota"]
+      },
+      "access": "anonymous"
+    },
+    {
+      "id": "consultoria",
+      "base_model_id": "/home/ai/II-Medical-8B",
+      "name": "DocTul Consultoria",
+      "params": {
+        "system": "You are DocTul Consultoria, providing medical consultation for Brazilian healthcare professionals. Always reply in Brazilian Portuguese.\nFocus on evidence-based medicine, clinical guidelines, and practical recommendations.\nConsider Brazilian healthcare system limitations and available resources.\nProvide detailed analysis when requested, but prioritize actionable clinical guidance.",
+        "top_p": 0.85,
+        "temperature": 0.5
+      },
+      "meta": {
+        "profile_image_url": "/static/favicon.png",
+        "description": "Consultoria médica especializada para profissionais de saúde",
+        "capabilities": {
+          "vision": false,
+          "file_upload": true,
+          "web_search": false,
+          "image_generation": false,
+          "code_interpreter": false,
+          "citations": true,
+          "usage": false
+        },
+        "suggestion_prompts": [
+          "Análise de caso clínico complexo",
+          "Revisão de protocolo hospitalar",
+          "Indicações para exames especializados",
+          "Manejo de comorbidades múltiplas"
+        ],
+        "tags": ["medicina", "consultoria", "especialista"]
+      },
+      "access": "premium"
+    }
+  ],
+  "settings": {
+    "default_anonymous_model": "geral",
+    "default_authenticated_model": "doctul",
+    "quota_limits": {
+      "anonymous": 10,
+      "authenticated": 30,
+      "premium": -1
+    }
+  }
+}

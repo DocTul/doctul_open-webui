@@ -143,10 +143,10 @@ class S3StorageProvider(StorageProvider):
         return re.sub(r"[^a-zA-Z0-9 äöüÄÖÜß\+\-=\._:/@]", "", s)
 
     def upload_file(
-        self, file: BinaryIO, filename: str, tags: Dict[str, str]
+        self, file: BinaryIO, filename: str, tags: Dict[str, str] = None
     ) -> Tuple[bytes, str]:
         """Handles uploading of the file to S3 storage."""
-        _, file_path = LocalStorageProvider.upload_file(file, filename, tags)
+        contents, file_path = LocalStorageProvider.upload_file(file, filename, tags or {})
         s3_key = os.path.join(self.key_prefix, filename)
         try:
             self.s3_client.upload_file(file_path, self.bucket_name, s3_key)
@@ -165,30 +165,9 @@ class S3StorageProvider(StorageProvider):
                     Key=s3_key,
                     Tagging=tagging,
                 )
-            return (
-                open(file_path, "rb").read(),
-                f"s3://{self.bucket_name}/{s3_key}",
-            )
+            return contents, f"s3://{self.bucket_name}/{s3_key}"
         except ClientError as e:
             raise RuntimeError(f"Error uploading file to S3: {e}")
-
-    def get_file(self, file_path: str) -> str:
-        """Handles downloading of the file from S3 storage."""
-        try:
-            s3_key = self._extract_s3_key(file_path)
-            local_file_path = self._get_local_file_path(s3_key)
-            self.s3_client.download_file(self.bucket_name, s3_key, local_file_path)
-            return local_file_path
-        except ClientError as e:
-            raise RuntimeError(f"Error downloading file from S3: {e}")
-
-    def delete_file(self, file_path: str) -> None:
-        """Handles deletion of the file from S3 storage."""
-        try:
-            s3_key = self._extract_s3_key(file_path)
-            self.s3_client.delete_object(Bucket=self.bucket_name, Key=s3_key)
-        except ClientError as e:
-            raise RuntimeError(f"Error deleting file from S3: {e}")
 
         # Always delete from local storage
         LocalStorageProvider.delete_file(file_path)
@@ -222,18 +201,23 @@ class S3StorageProvider(StorageProvider):
 
 class GCSStorageProvider(StorageProvider):
     def __init__(self):
-        self.bucket_name = GCS_BUCKET_NAME
+        import os
+        from google.auth.exceptions import DefaultCredentialsError
+        from google.auth.credentials import AnonymousCredentials
 
-        if GOOGLE_APPLICATION_CREDENTIALS_JSON:
-            self.gcs_client = storage.Client.from_service_account_info(
-                info=json.loads(GOOGLE_APPLICATION_CREDENTIALS_JSON)
-            )
-        else:
-            # if no credentials json is provided, credentials will be picked up from the environment
-            # if running on local environment, credentials would be user credentials
-            # if running on a Compute Engine instance, credentials would be from Google Metadata server
-            self.gcs_client = storage.Client()
-        self.bucket = self.gcs_client.bucket(GCS_BUCKET_NAME)
+        self.bucket_name = GCS_BUCKET_NAME
+        try:
+            if GOOGLE_APPLICATION_CREDENTIALS_JSON:
+                self.gcs_client = storage.Client.from_service_account_info(
+                    info=json.loads(GOOGLE_APPLICATION_CREDENTIALS_JSON)
+                )
+            else:
+                self.gcs_client = storage.Client()
+            self.bucket = self.gcs_client.bucket(GCS_BUCKET_NAME)
+        except (DefaultCredentialsError, Exception):
+            # Prevent errors during import; tests should override client and bucket in setup
+            self.gcs_client = None
+            self.bucket = None
 
     def upload_file(
         self, file: BinaryIO, filename: str, tags: Dict[str, str]

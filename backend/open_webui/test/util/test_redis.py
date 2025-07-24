@@ -458,7 +458,7 @@ class TestSentinelRedisProxyCommands:
         assert mock_master.hget.call_count == 2
 
         # Verify both calls were made with same parameters
-        expected_calls = [(("test_hash", "field1"),), (("test_hash", "field1"),)]
+        expected_calls = [("test_hash", "field1"), ("test_hash", "field1")]
         actual_calls = [call.args for call in mock_master.hget.call_args_list]
         assert actual_calls == expected_calls
 
@@ -489,8 +489,8 @@ class TestSentinelRedisProxyCommands:
 
         # Verify both calls were made with same parameters
         expected_calls = [
-            (("test_hash", "field1", "value1"),),
-            (("test_hash", "field1", "value1"),),
+            ("test_hash", "field1", "value1"),
+            ("test_hash", "field1", "value1"),
         ]
         actual_calls = [call.args for call in mock_master.hset.call_args_list]
         assert actual_calls == expected_calls
@@ -522,7 +522,7 @@ class TestSentinelRedisProxyCommands:
         assert mock_master.hget.call_count == 2
 
         # Verify both calls were made with same parameters
-        expected_calls = [(("test_hash", "field1"),), (("test_hash", "field1"),)]
+        expected_calls = [("test_hash", "field1"), ("test_hash", "field1")]
         actual_calls = [call.args for call in mock_master.hget.call_args_list]
         assert actual_calls == expected_calls
 
@@ -628,25 +628,22 @@ class TestSentinelRedisProxyFactoryMethods:
         mock_sentinel = Mock()
         mock_master = Mock()
 
-        # First call fails, second succeeds
+        # Factory methods should not do retry - they are passed through directly
         mock_pubsub = Mock()
-        mock_master.pubsub.side_effect = [
-            redis.exceptions.ConnectionError("Connection failed"),
-            mock_pubsub,
-        ]
+        mock_master.pubsub.return_value = mock_pubsub
 
         mock_sentinel.master_for.return_value = mock_master
 
         proxy = SentinelRedisProxy(mock_sentinel, "mymaster", async_mode=True)
 
-        # Test pubsub factory method with failover
+        # Test pubsub factory method - should be passed through without retry wrapper
         pubsub_method = proxy.__getattr__("pubsub")
         result = pubsub_method()
 
         assert result == mock_pubsub
-        assert mock_master.pubsub.call_count == 2  # Retry happened
+        assert mock_master.pubsub.call_count == 1  # No retry for factory methods
 
-        # Verify it's still not wrapped as async after retry
+        # Verify it's not wrapped as async
         assert not inspect.iscoroutine(result)
 
     @patch("redis.sentinel.Sentinel")

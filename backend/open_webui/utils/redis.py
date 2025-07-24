@@ -7,6 +7,9 @@ import redis
 
 from open_webui.env import REDIS_SENTINEL_MAX_RETRY_COUNT
 
+# Expor MAX_RETRY_COUNT para compatibilidade com testes
+MAX_RETRY_COUNT = REDIS_SENTINEL_MAX_RETRY_COUNT
+
 log = logging.getLogger(__name__)
 
 
@@ -63,7 +66,6 @@ class SentinelRedisProxy:
             return _wrapped
 
         else:
-
             def _wrapped(*args, **kwargs):
                 for i in range(REDIS_SENTINEL_MAX_RETRY_COUNT):
                     try:
